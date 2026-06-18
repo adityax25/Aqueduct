@@ -1,0 +1,39 @@
+# Secrets and credentials (never commit)
+*.pem
+*.env
+.env
+.env.*
+*.cnf
+secrets/
+**/credentials*
+
+# Data dumps and DB volumes
+*.sql.gz
+*.dump
+dumps/
+data/
+pgdata/
+**/postgres-data/
+diagnostics_report.txt
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+*.egg-info/
+
+# Java / Flink build artifacts
+target/
+*.jar
+!**/lib/*.jar
+
+# OS and editor
+.DS_Store
+.idea/
+.vscode/
+*.log
+
+# Local-only notes (kept for personal reference, not published)
+docs/decisions.md

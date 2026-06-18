@@ -1,0 +1,34 @@
+# Local infrastructure for the CDC pipeline. Kafka, Debezium, and Flink are
+# added as services here as the pipeline is built out.
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: aqueduct-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: cdc
+      POSTGRES_PASSWORD: cdc_pw   # local dev only; inject via secrets in real deployments
+      POSTGRES_DB: yami
+    ports:
+      - "5432:5432"
+    command:
+      # wal_level=logical is the prerequisite for CDC: it makes PostgreSQL emit
+      # row-level change records that Debezium decodes from the WAL.
+      - "postgres"
+      - "-c"
+      - "wal_level=logical"
+      - "-c"
+      - "max_wal_senders=10"
+      - "-c"
+      - "max_replication_slots=10"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cdc -d yami"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pgdata:
