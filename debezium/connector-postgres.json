@@ -1,0 +1,21 @@
+{
+  "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
+  "database.hostname": "aqueduct-postgres",
+  "database.port": "5432",
+  "database.user": "cdc",
+  "database.password": "cdc_pw",
+  "database.dbname": "yami",
+  "topic.prefix": "aqueduct",
+  "plugin.name": "pgoutput",
+  "table.include.list": "public.order_info,public.order_goods,public.goods_info",
+  "slot.name": "aqueduct_slot",
+  "publication.name": "aqueduct_pub",
+  "publication.autocreate.mode": "filtered",
+  "snapshot.mode": "never",
+  "tombstones.on.delete": "false",
+  "decimal.handling.mode": "double",
+  "key.converter": "org.apache.kafka.connect.json.JsonConverter",
+  "key.converter.schemas.enable": "false",
+  "value.converter": "org.apache.kafka.connect.json.JsonConverter",
+  "value.converter.schemas.enable": "false"
+}

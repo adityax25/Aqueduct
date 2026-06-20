@@ -1,5 +1,4 @@
-# Local infrastructure for the CDC pipeline. Kafka, Debezium, and Flink are
-# added as services here as the pipeline is built out.
+# Local infrastructure for the Aqueduct CDC pipeline.
 
 services:
   postgres:
@@ -29,6 +28,59 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+
+  kafka:
+    image: confluentinc/cp-kafka:7.8.0
+    container_name: aqueduct-kafka
+    restart: unless-stopped
+    environment:
+      CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@aqueduct-kafka:9093
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+      # Advertised under the routable service name so other containers can reach it.
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://aqueduct-kafka:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+
+  connect:
+    image: quay.io/debezium/connect:3.0.0.Final
+    container_name: aqueduct-connect
+    restart: unless-stopped
+    depends_on:
+      - kafka
+      - postgres
+    ports:
+      - "8083:8083"
+    environment:
+      BOOTSTRAP_SERVERS: aqueduct-kafka:9092
+      GROUP_ID: aqueduct-connect
+      CONFIG_STORAGE_TOPIC: connect_configs
+      OFFSET_STORAGE_TOPIC: connect_offsets
+      STATUS_STORAGE_TOPIC: connect_statuses
+      KEY_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      VALUE_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: aqueduct-kafka-ui
+    restart: unless-stopped
+    depends_on:
+      - kafka
+      - connect
+    ports:
+      - "8080:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: aqueduct
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: aqueduct-kafka:9092
+      KAFKA_CLUSTERS_0_KAFKACONNECT_0_NAME: debezium
+      KAFKA_CLUSTERS_0_KAFKACONNECT_0_ADDRESS: http://aqueduct-connect:8083
 
 volumes:
   pgdata:
