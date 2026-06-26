@@ -16,14 +16,80 @@ Aqueduct taps the database's write-ahead log (WAL), the same internal change log
 
 ## Architecture
 
-```
-PostgreSQL (WAL)  ->    Debezium   ->    Kafka    ->   Apache Flink   ->   Analytics sink
-  source of            CDC reader       durable           joins /            processed
-  truth + WAL          of the WAL      event log        windowing /           results
-                                                        anomaly detect
+```mermaid
+%%{init: {'theme':'base','flowchart':{'nodeSpacing':35,'rankSpacing':40},'themeVariables':{'fontFamily':'system-ui, sans-serif','fontSize':'14px','lineColor':'#64748B','textColor':'#1E293B','titleColor':'#0F172A','clusterBkg':'#FFFFFF','edgeLabelBackground':'#FFFFFF'}}}%%
+flowchart LR
+    subgraph ALL["Aqueduct · system architecture"]
+        direction LR
+        subgraph SRC["Source database"]
+            direction TB
+            WG("Workload generator<br/>INSERT/UPDATE/DELETE")
+            PG[("PostgreSQL 16<br/>3 source tables")]
+            WAL("Write-ahead log<br/>wal_level=logical<br/>pub: aqueduct_pub<br/>slot: aqueduct_slot")
+            WG --> PG --> WAL
+        end
+        subgraph CDC["CDC · Kafka Connect"]
+            DBZ("Debezium connector<br/>pgoutput plugin<br/>WAL → change events<br/>REST :8083")
+        end
+        subgraph KFK["Kafka · KRaft · aqueduct.public.*"]
+            direction TB
+            INT("internal:<br/>configs · offsets · status")
+            T1("order_info")
+            T2("order_goods")
+            T3("goods_info")
+        end
+        subgraph PRC["Stream processing"]
+            FLINK("Apache Flink<br/>joins · windows<br/>anomaly detection")
+        end
+        subgraph SRV["Serving"]
+            SINK("Analytics sink")
+        end
+        subgraph OBS["Observability"]
+            direction TB
+            UI("Kafka UI · :8080")
+            PROM("Prometheus<br/>scrapes metrics")
+            GRAF("Grafana<br/>dashboards")
+            UI ~~~ PROM --> GRAF
+        end
+    end
+
+    WAL -->|"logical replication"| DBZ
+    DBZ -->|"keyed by primary key"| T1 & T2 & T3
+    T1 & T2 & T3 --> FLINK
+    FLINK --> SINK
+    T1 -.-> UI
+    T2 -.->|"read only"| UI
+    T3 -.-> UI
+    CDC -.->|"metrics"| PROM
+    KFK -.->|"metrics"| PROM
+    PRC -.->|"metrics"| PROM
+
+    classDef source fill:#DBEAFE,stroke:#2563EB,color:#1E3A8A;
+    classDef cdc fill:#D1FAE5,stroke:#059669,color:#065F46;
+    classDef kafka fill:#FEF3C7,stroke:#D97706,color:#92400E;
+    classDef internal fill:#FEF9C3,stroke:#CA8A04,color:#854D0E;
+    classDef proc fill:#FCE7F3,stroke:#DB2777,color:#9D174F;
+    classDef serve fill:#EDE9FE,stroke:#7C3AED,color:#5B21B6;
+    classDef obs fill:#CFFAFE,stroke:#0891B2,color:#155E75;
+
+    class WG,PG,WAL source;
+    class DBZ cdc;
+    class T1,T2,T3 kafka;
+    class INT internal;
+    class FLINK proc;
+    class SINK serve;
+    class UI,PROM,GRAF obs;
+
+    style ALL fill:#FFFFFF,stroke:#CBD5E1,stroke-width:1.5px,color:#0F172A;
+    style SRC fill:#EFF6FF,stroke:#2563EB,stroke-width:1px,stroke-dasharray:2 2;
+    style CDC fill:#ECFDF5,stroke:#059669,stroke-width:1px,stroke-dasharray:2 2;
+    style KFK fill:#FFFBEB,stroke:#D97706,stroke-width:1px,stroke-dasharray:2 2;
+    style PRC fill:#FDF2F8,stroke:#DB2777,stroke-width:1px,stroke-dasharray:2 2;
+    style SRV fill:#F5F3FF,stroke:#7C3AED,stroke-width:1px,stroke-dasharray:2 2;
+    style OBS fill:#ECFEFF,stroke:#0891B2,stroke-width:1px,stroke-dasharray:2 2;
 ```
 
-Every stage scales horizontally, which makes Aqueduct distributed end to end: Kafka partitions topics across brokers, Flink runs operators in parallel across task managers with sharded state, and Debezium runs on the distributed Kafka Connect framework.
+Every stage scales horizontally, which makes Aqueduct distributed end-to-end: Kafka partitions topics across brokers, Flink runs operators in parallel across task managers with sharded state, and Debezium runs on the distributed Kafka Connect framework.
 
 | Stage | Role |
 | :- | :- |
@@ -71,15 +137,15 @@ Aqueduct is seeded with a real e-commerce dataset (~34M rows), with all PII remo
 - **Dataset diagnostics:** verified the source is CDC-suitable (primary keys, schema shape, join keys, volume).
 - **Source database:** Dockerized PostgreSQL 16 with `wal_level=logical`.
 - **Data migration:** full transactional dataset (~34M rows) loaded from MySQL into PostgreSQL via pgloader, verified row for row.
+- **CDC core:** Kafka (KRaft) + Debezium on Kafka Connect, with the Postgres connector streaming row-level changes into Kafka topics. Verified end to end.
 
 ### In Progress
-- **CDC core:** Kafka + Debezium, Postgres publication / replication slot, connector registration.
+- **Workload generator** for continuous change traffic.
 
 ### Upcoming
-- Workload generator for continuous change traffic
 - Flink jobs: joins, windowed aggregation, anomaly detection
 - Throughput and end-to-end latency benchmarks (reported numbers will reflect measured values)
-- Polish: architecture diagram, demo, tests, CI
+- Polish: demo, tests, CI
 
 ## Getting Started
 
