@@ -128,6 +128,7 @@ Aqueduct is seeded with a real e-commerce dataset (~34M rows), with all PII remo
 | **Event transport** | Apache Kafka |
 | **Stream processing** | Apache Flink |
 | **Data migration** | pgloader (MySQL to PostgreSQL) |
+| **Load generation** | Python (asyncio, asyncpg) |
 | **Infrastructure** | Docker, Docker Compose |
 | **Observability** | Prometheus, Grafana *(planned)* |
 
@@ -138,9 +139,10 @@ Aqueduct is seeded with a real e-commerce dataset (~34M rows), with all PII remo
 - **Source database:** Dockerized PostgreSQL 16 with `wal_level=logical`.
 - **Data migration:** full transactional dataset (~34M rows) loaded from MySQL into PostgreSQL via pgloader, verified row for row.
 - **CDC core:** Kafka (KRaft) + Debezium on Kafka Connect, with the Postgres connector streaming row-level changes into Kafka topics. Verified end to end.
+- **Workload generator:** async (asyncio and asyncpg) load driver issuing transactional insert/update/delete in a configurable mix, paced by a token-bucket rate limiter with a burst mode. Sustains over 12K change events per second into the source in local runs, with zero errors.
 
 ### In Progress
-- **Workload generator** for continuous change traffic.
+- **Generator observability and packaging:** Prometheus metrics endpoint and docker-compose integration.
 
 ### Upcoming
 - Flink jobs: joins, windowed aggregation, anomaly detection
