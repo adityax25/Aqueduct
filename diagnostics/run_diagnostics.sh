@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ============================================================================
-# Runs the Yami DB fitness diagnostics and writes a clean report you can paste.
+# Runs the Yami DB fitness diagnostics and writes a clean report.
 #
 # Usage:
 #   ./run_diagnostics.sh [SCHEMA_NAME]
