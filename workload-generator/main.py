@@ -8,6 +8,7 @@ import signal
 
 from config import Config
 from db import create_pool
+from metrics import start_metrics_server
 from ratelimit import TokenBucket
 from state import IdAllocator, WorkerState
 from stats import Counter
@@ -36,6 +37,9 @@ async def report(counter: Counter, stop: asyncio.Event) -> None:
 
 
 async def run(config: Config) -> None:
+    start_metrics_server(config.metrics_port)
+    log.info("metrics available at http://localhost:%s/metrics", config.metrics_port)
+
     pool = await create_pool(config)
     log.info("connected to database, pool size %s", config.workers)
 
