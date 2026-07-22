@@ -139,7 +139,7 @@ Aqueduct is seeded with a real e-commerce dataset (~34M rows), with all PII remo
 - **Source database:** Dockerized PostgreSQL 16 with `wal_level=logical`.
 - **Data migration:** full transactional dataset (~34M rows) loaded from MySQL into PostgreSQL via pgloader, verified row for row.
 - **CDC core:** Kafka (KRaft) + Debezium on Kafka Connect, with the Postgres connector streaming row-level changes into Kafka topics. Verified end to end.
-- **Workload generator:** async (asyncio and asyncpg) load driver issuing transactional insert/update/delete in a configurable mix, paced by a token-bucket rate limiter with a burst mode, and exposing Prometheus metrics. Sustains over 12K change events per second into the source in local runs, with zero errors.
+- **Workload generator:** async (asyncio and asyncpg) load driver issuing transactional insert/update/delete in a configurable mix, paced by a token-bucket rate limiter with a burst mode, and exposing Prometheus metrics. Sustains over 12K change events per second into the source in local runs, with zero errors. Runs as a container in an opt-in Compose profile, so the whole pipeline including its traffic starts from Docker Compose alone.
 - **Stream processing (Flink):** three-way in-flight join (line-items, orders, products), running and tumbling-window aggregation (revenue by category, revenue per window), and real-time anomaly detection, all in Flink SQL over the Debezium topics.
 - **Serving layer:** the Flink jobs run continuously and write their results (enriched line-items, revenue by category and by window, pricing anomalies) into Postgres analytics tables that a dashboard can read.
 
@@ -147,7 +147,7 @@ Aqueduct is seeded with a real e-commerce dataset (~34M rows), with all PII remo
 - **Dashboard:** a live view over the analytics tables.
 
 ### Upcoming
-- Observability dashboards (Prometheus and Grafana), and the generator packaged into the stack
+- Observability dashboards (Prometheus and Grafana)
 - End-to-end throughput and latency benchmarks (reported numbers will reflect measured values)
 - Polish: demo, tests, CI
 
@@ -155,8 +155,9 @@ Aqueduct is seeded with a real e-commerce dataset (~34M rows), with all PII remo
 
 ### Prerequisites
 - Docker & Docker Compose
-- Python 3.11+ (to run the workload generator)
 - Access to the upstream source database (migration step only)
+
+Every component runs in a container, so nothing needs to be installed locally.
 
 Once the stack is up: Flink dashboard at http://localhost:8081, Kafka UI at http://localhost:8080.
 
@@ -184,11 +185,19 @@ docker exec aqueduct-postgres psql -U cdc -d yami -c "UPDATE goods_info SET good
 ```
 
 ### 4. Generate change traffic
+The generator runs as a container in the `load` profile, so it is excluded from the
+default startup and launched only when traffic is wanted.
 ```bash
-pip install -r workload-generator/requirements.txt
-DATABASE_URL=postgresql://cdc:cdc_pw@localhost:5432/yami python3 workload-generator/main.py
+docker compose --profile load up --build generator
 ```
-Tune the load with `TARGET_RATE`, `WORKERS`, `BURST`, and `ANOMALY_RATE`.
+Tune the load with environment variables, for example a timed high-rate run:
+```bash
+TARGET_RATE=1000 DURATION_SECONDS=60 docker compose --profile load up generator
+```
+`TARGET_RATE` is transactions per second (each produces several change events);
+`BURST=1` bypasses the rate limiter entirely. `WORKERS`, `DURATION_SECONDS`
+(`0` runs until interrupted), and `ANOMALY_RATE` are also configurable.
+Generator metrics are exposed at http://localhost:9100.
 
 ### 5. Run the stream processing
 Create the analytics sink tables, then submit the pipeline, which runs the joins, aggregations, and anomaly detection as one continuous job that writes results into Postgres.

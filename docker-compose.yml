@@ -108,5 +108,26 @@ services:
         jobmanager.rpc.address: aqueduct-flink-jobmanager
         taskmanager.numberOfTaskSlots: 4
 
+  # Change-traffic driver. Assigned to the "load" profile so it stays out of the
+  # default `docker compose up`, which brings up infrastructure only.
+  generator:
+    build: ./workload-generator
+    image: aqueduct-generator
+    container_name: aqueduct-generator
+    profiles: ["load"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "9100:9100"
+    environment:
+      DATABASE_URL: postgresql://cdc:cdc_pw@aqueduct-postgres:5432/yami
+      METRICS_PORT: 9100
+      WORKERS: ${WORKERS:-8}
+      TARGET_RATE: ${TARGET_RATE:-200}
+      DURATION_SECONDS: ${DURATION_SECONDS:-0}
+      BURST: ${BURST:-0}
+      ANOMALY_RATE: ${ANOMALY_RATE:-0.02}
+
 volumes:
   pgdata:
