@@ -141,13 +141,14 @@ Aqueduct is seeded with a real e-commerce dataset (~34M rows), with all PII remo
 - **CDC core:** Kafka (KRaft) + Debezium on Kafka Connect, with the Postgres connector streaming row-level changes into Kafka topics. Verified end to end.
 - **Workload generator:** async (asyncio and asyncpg) load driver issuing transactional insert/update/delete in a configurable mix, paced by a token-bucket rate limiter with a burst mode, and exposing Prometheus metrics. Sustains over 12K change events per second into the source in local runs, with zero errors.
 - **Stream processing (Flink):** three-way in-flight join (line-items, orders, products), running and tumbling-window aggregation (revenue by category, revenue per window), and real-time anomaly detection, all in Flink SQL over the Debezium topics.
+- **Serving layer:** the Flink jobs run continuously and write their results (enriched line-items, revenue by category and by window, pricing anomalies) into Postgres analytics tables that a dashboard can read.
 
 ### In Progress
-- **Serving layer:** persist the Flink results to a sink and build a live dashboard.
+- **Dashboard:** a live view over the analytics tables.
 
 ### Upcoming
-- End-to-end throughput and latency benchmarks (reported numbers will reflect measured values)
 - Observability dashboards (Prometheus and Grafana), and the generator packaged into the stack
+- End-to-end throughput and latency benchmarks (reported numbers will reflect measured values)
 - Polish: demo, tests, CI
 
 ## Getting Started
@@ -190,7 +191,10 @@ DATABASE_URL=postgresql://cdc:cdc_pw@localhost:5432/yami python3 workload-genera
 Tune the load with `TARGET_RATE`, `WORKERS`, `BURST`, and `ANOMALY_RATE`.
 
 ### 5. Run the stream processing
-Open the Flink SQL client and run the queries in [flink/aqueduct.sql](flink/aqueduct.sql).
+Create the analytics sink tables, then submit the pipeline, which runs the joins, aggregations, and anomaly detection as one continuous job that writes results into Postgres.
 ```bash
-docker exec -it aqueduct-flink-jobmanager ./bin/sql-client.sh
+docker exec -i aqueduct-postgres psql -U cdc -d yami < flink/sink_tables.sql
+docker cp flink/pipeline.sql aqueduct-flink-jobmanager:/tmp/pipeline.sql
+docker exec aqueduct-flink-jobmanager ./bin/sql-client.sh -f /tmp/pipeline.sql
 ```
+Results land in the `enriched_line_items`, `revenue_by_category`, `revenue_by_window`, and `pricing_anomalies` tables. For interactive exploration of the individual queries, see [flink/aqueduct.sql](flink/aqueduct.sql).
