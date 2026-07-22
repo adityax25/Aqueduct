@@ -139,26 +139,30 @@ Aqueduct is seeded with a real e-commerce dataset (~34M rows), with all PII remo
 - **Source database:** Dockerized PostgreSQL 16 with `wal_level=logical`.
 - **Data migration:** full transactional dataset (~34M rows) loaded from MySQL into PostgreSQL via pgloader, verified row for row.
 - **CDC core:** Kafka (KRaft) + Debezium on Kafka Connect, with the Postgres connector streaming row-level changes into Kafka topics. Verified end to end.
-- **Workload generator:** async (asyncio and asyncpg) load driver issuing transactional insert/update/delete in a configurable mix, paced by a token-bucket rate limiter with a burst mode. Sustains over 12K change events per second into the source in local runs, with zero errors.
+- **Workload generator:** async (asyncio and asyncpg) load driver issuing transactional insert/update/delete in a configurable mix, paced by a token-bucket rate limiter with a burst mode, and exposing Prometheus metrics. Sustains over 12K change events per second into the source in local runs, with zero errors.
+- **Stream processing (Flink):** three-way in-flight join (line-items, orders, products), running and tumbling-window aggregation (revenue by category, revenue per window), and real-time anomaly detection, all in Flink SQL over the Debezium topics.
 
 ### In Progress
-- **Generator observability and packaging:** Prometheus metrics endpoint and docker-compose integration.
+- **Serving layer:** persist the Flink results to a sink and build a live dashboard.
 
 ### Upcoming
-- Flink jobs: joins, windowed aggregation, anomaly detection
-- Throughput and end-to-end latency benchmarks (reported numbers will reflect measured values)
+- End-to-end throughput and latency benchmarks (reported numbers will reflect measured values)
+- Observability dashboards (Prometheus and Grafana), and the generator packaged into the stack
 - Polish: demo, tests, CI
 
 ## Getting Started
 
 ### Prerequisites
 - Docker & Docker Compose
+- Python 3.11+ (to run the workload generator)
 - Access to the upstream source database (migration step only)
 
-### 1. Start the source database
+Once the stack is up: Flink dashboard at http://localhost:8081, Kafka UI at http://localhost:8080.
+
+### 1. Start the stack
+Brings up PostgreSQL, Kafka, Debezium, Kafka UI, and Flink.
 ```bash
-docker compose up -d
-docker exec -it aqueduct-postgres psql -U cdc -d yami -c "SHOW wal_level;"   # returns: logical
+docker compose up -d --build
 ```
 
 ### 2. Load the dataset
@@ -166,3 +170,27 @@ docker exec -it aqueduct-postgres psql -U cdc -d yami -c "SHOW wal_level;"   # r
 ./migration/run_migration.sh
 ```
 Migrates the core tables into PostgreSQL using a containerized pgloader, nothing to install locally.
+
+### 3. Enable change capture
+Set REPLICA IDENTITY FULL (so updates carry the full old row), register the Debezium connector, and seed the product-catalog topic once.
+```bash
+docker exec aqueduct-postgres psql -U cdc -d yami -c \
+  "ALTER TABLE order_info REPLICA IDENTITY FULL;
+   ALTER TABLE order_goods REPLICA IDENTITY FULL;
+   ALTER TABLE goods_info REPLICA IDENTITY FULL;"
+./debezium/register-connector.sh
+docker exec aqueduct-postgres psql -U cdc -d yami -c "UPDATE goods_info SET goods_name = goods_name;"
+```
+
+### 4. Generate change traffic
+```bash
+pip install -r workload-generator/requirements.txt
+DATABASE_URL=postgresql://cdc:cdc_pw@localhost:5432/yami python3 workload-generator/main.py
+```
+Tune the load with `TARGET_RATE`, `WORKERS`, `BURST`, and `ANOMALY_RATE`.
+
+### 5. Run the stream processing
+Open the Flink SQL client and run the queries in [flink/aqueduct.sql](flink/aqueduct.sql).
+```bash
+docker exec -it aqueduct-flink-jobmanager ./bin/sql-client.sh
+```
