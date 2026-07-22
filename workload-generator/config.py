@@ -18,6 +18,7 @@ class Config:
     seed: int
     metrics_port: int
     burst: bool                 # when true, bypass the rate limiter and push as fast as possible
+    anomaly_rate: float         # fraction of line-items priced above list, as injected anomalies
 
     @classmethod
     def from_env(cls) -> "Config":
@@ -35,4 +36,5 @@ class Config:
             seed=int(os.getenv("SEED", "42")),
             metrics_port=int(os.getenv("METRICS_PORT", "9100")),
             burst=os.getenv("BURST", "0").lower() in ("1", "true", "yes"),
+            anomaly_rate=float(os.getenv("ANOMALY_RATE", "0.02")),
         )

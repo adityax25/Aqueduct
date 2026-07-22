@@ -70,6 +70,7 @@ async def run(config: Config) -> None:
             rng=random.Random(config.seed + i),
             goods_ids=goods_ids,
             allocator=allocator,
+            anomaly_rate=config.anomaly_rate,
         )
         for i in range(config.workers)
     ]

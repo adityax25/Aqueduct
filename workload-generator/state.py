@@ -24,4 +24,5 @@ class WorkerState:
     rng: random.Random
     goods_ids: list[int]        # real product ids to reference, sampled at startup
     allocator: IdAllocator      # shared across workers
+    anomaly_rate: float         # probability a line-item is injected as a pricing anomaly
     recent_orders: deque = field(default_factory=lambda: deque(maxlen=1000))

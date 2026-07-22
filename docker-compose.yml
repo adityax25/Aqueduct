@@ -82,5 +82,31 @@ services:
       KAFKA_CLUSTERS_0_KAFKACONNECT_0_NAME: debezium
       KAFKA_CLUSTERS_0_KAFKACONNECT_0_ADDRESS: http://aqueduct-connect:8083
 
+  flink-jobmanager:
+    build: ./flink
+    image: aqueduct-flink
+    container_name: aqueduct-flink-jobmanager
+    restart: unless-stopped
+    depends_on:
+      - kafka
+    ports:
+      - "8081:8081"
+    command: jobmanager
+    environment:
+      FLINK_PROPERTIES: |
+        jobmanager.rpc.address: aqueduct-flink-jobmanager
+
+  flink-taskmanager:
+    image: aqueduct-flink
+    container_name: aqueduct-flink-taskmanager
+    restart: unless-stopped
+    depends_on:
+      - flink-jobmanager
+    command: taskmanager
+    environment:
+      FLINK_PROPERTIES: |
+        jobmanager.rpc.address: aqueduct-flink-jobmanager
+        taskmanager.numberOfTaskSlots: 4
+
 volumes:
   pgdata:

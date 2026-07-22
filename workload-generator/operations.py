@@ -25,7 +25,10 @@ async def insert_order(conn: asyncpg.Connection, state: WorkerState) -> int:
     total = Decimal("0.00")
     for _ in range(rng.randint(1, 5)):
         goods_price = _money(rng.uniform(1, 200))
-        deal_price = _money(float(goods_price) * rng.uniform(0.6, 1.0))
+        if rng.random() < state.anomaly_rate:
+            deal_price = _money(float(goods_price) * rng.uniform(1.5, 3.0))  # priced above list
+        else:
+            deal_price = _money(float(goods_price) * rng.uniform(0.6, 1.0))
         quantity = rng.randint(1, 3)
         total += deal_price * quantity
         lines.append((order_id, rng.choice(state.goods_ids), goods_price, deal_price, quantity))
