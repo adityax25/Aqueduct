@@ -14,6 +14,15 @@ psql_q() {
     docker exec "$PG_CONTAINER" psql -U cdc -d yami -tAc "$1"
 }
 
+echo "=== Workload generator ==="
+if [ -n "$(docker ps -q --filter name=aqueduct-generator)" ]; then
+    echo "RUNNING. Change traffic is being produced."
+    docker logs --tail 1 aqueduct-generator 2>&1 | sed 's/^/  /'
+else
+    echo "stopped"
+fi
+
+echo
 echo "=== Debezium connector ==="
 curl -s "$CONNECT_URL/connectors/$CONNECTOR/status" |
     python3 -c 'import sys,json; d=json.load(sys.stdin); print("connector:", d["connector"]["state"]); [print("task %s:" % t["id"], t["state"]) for t in d["tasks"]]'

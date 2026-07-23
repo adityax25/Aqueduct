@@ -21,6 +21,12 @@ services:
       - "max_wal_senders=10"
       - "-c"
       - "max_replication_slots=10"
+      # Bounds WAL retained for a lagging replication slot. Without a limit, a
+      # stalled CDC consumer holds WAL indefinitely until the disk fills and the
+      # database stops accepting writes; past this bound the slot is invalidated
+      # instead, trading a connector resnapshot for database availability.
+      - "-c"
+      - "max_slot_wal_keep_size=4GB"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -48,6 +54,12 @@ services:
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      # Retention is unlimited by default, which lets a long run fill the disk.
+      # Size is capped per partition, and smaller segments make eviction granular,
+      # since Kafka deletes whole segments and never the active one.
+      KAFKA_LOG_RETENTION_BYTES: 8589934592      # 8 GiB per partition
+      KAFKA_LOG_RETENTION_HOURS: 24
+      KAFKA_LOG_SEGMENT_BYTES: 268435456         # 256 MiB
 
   connect:
     image: quay.io/debezium/connect:3.0.0.Final
@@ -95,6 +107,13 @@ services:
     environment:
       FLINK_PROPERTIES: |
         jobmanager.rpc.address: aqueduct-flink-jobmanager
+        jobmanager.memory.process.size: 1g
+        state.backend.type: rocksdb
+        state.backend.incremental: true
+        # Partitions keyed state across subtasks. Kafka sources stay effectively
+        # single-threaded while topics have one partition; the joins and
+        # aggregations downstream do parallelize.
+        parallelism.default: 2
 
   flink-taskmanager:
     image: aqueduct-flink
@@ -107,6 +126,11 @@ services:
       FLINK_PROPERTIES: |
         jobmanager.rpc.address: aqueduct-flink-jobmanager
         taskmanager.numberOfTaskSlots: 4
+        # Join state exceeds what the default heap-based backend can hold, so state
+        # is kept in RocksDB on local disk with an off-heap block cache.
+        taskmanager.memory.process.size: 3g
+        state.backend.type: rocksdb
+        state.backend.incremental: true
 
   # Change-traffic driver. Assigned to the "load" profile so it stays out of the
   # default `docker compose up`, which brings up infrastructure only.
