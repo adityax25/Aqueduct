@@ -2,6 +2,12 @@
 -- Reads the Debezium change-event topics and continuously writes results into
 -- the Postgres analytics tables defined in sink_tables.sql.
 
+-- Regular joins retain both input sides indefinitely, since no temporal predicate
+-- bounds them. Idle state is expired after this interval to keep state from growing
+-- without limit. Orders and their line-items are written in the same transaction, so
+-- the interval is far wider than the window in which rows actually need to match.
+SET 'table.exec.state.ttl' = '1 h';
+
 -- Sources: the Debezium change-event topics.
 
 CREATE TABLE order_info (

@@ -104,16 +104,43 @@ services:
     ports:
       - "8081:8081"
     command: jobmanager
+    volumes:
+      # Checkpoint storage is shared: task managers write state files, the job
+      # manager writes checkpoint metadata, and recovery reads both.
+      - flink_checkpoints:/opt/flink/checkpoints
+    # FLINK_PROPERTIES is converted verbatim into Flink's config.yaml, which does
+    # not accept inline comments, so the rationale is kept here instead:
+    #  - state.backend rocksdb: join state is kept on local disk with an off-heap
+    #    block cache, since regular joins retain both sides and exceed the heap.
+    #  - parallelism.default 2: partitions keyed state across subtasks. Kafka
+    #    sources stay effectively single-threaded while topics have one partition;
+    #    the joins and aggregations downstream do parallelize.
+    #  - checkpointing: periodic consistent snapshots of state and source offsets,
+    #    so a failed job resumes without gaps or duplicates. Unaligned checkpoints
+    #    let barriers overtake buffered records, so snapshots still complete under
+    #    backpressure.
+    #  - restart-strategy exponential-delay: recovers from transient task failures
+    #    instead of failing outright; backoff grows on repeated failures so a brief
+    #    blip recovers quickly while a persistent fault does not restart in a loop.
     environment:
       FLINK_PROPERTIES: |
         jobmanager.rpc.address: aqueduct-flink-jobmanager
         jobmanager.memory.process.size: 1g
         state.backend.type: rocksdb
         state.backend.incremental: true
-        # Partitions keyed state across subtasks. Kafka sources stay effectively
-        # single-threaded while topics have one partition; the joins and
-        # aggregations downstream do parallelize.
         parallelism.default: 2
+        execution.checkpointing.interval: 30s
+        execution.checkpointing.min-pause: 10s
+        execution.checkpointing.timeout: 10min
+        execution.checkpointing.unaligned: true
+        execution.checkpointing.externalized-checkpoint-retention: RETAIN_ON_CANCELLATION
+        execution.checkpointing.dir: file:///opt/flink/checkpoints
+        restart-strategy.type: exponential-delay
+        restart-strategy.exponential-delay.initial-backoff: 1s
+        restart-strategy.exponential-delay.max-backoff: 2min
+        restart-strategy.exponential-delay.backoff-multiplier: 2.0
+        restart-strategy.exponential-delay.reset-backoff-threshold: 10min
+        restart-strategy.exponential-delay.jitter-factor: 0.1
 
   flink-taskmanager:
     image: aqueduct-flink
@@ -122,12 +149,13 @@ services:
     depends_on:
       - flink-jobmanager
     command: taskmanager
+    volumes:
+      - flink_checkpoints:/opt/flink/checkpoints
+    # See the job manager above for why state is kept in RocksDB rather than heap.
     environment:
       FLINK_PROPERTIES: |
         jobmanager.rpc.address: aqueduct-flink-jobmanager
         taskmanager.numberOfTaskSlots: 4
-        # Join state exceeds what the default heap-based backend can hold, so state
-        # is kept in RocksDB on local disk with an off-heap block cache.
         taskmanager.memory.process.size: 3g
         state.backend.type: rocksdb
         state.backend.incremental: true
@@ -155,3 +183,4 @@ services:
 
 volumes:
   pgdata:
+  flink_checkpoints:

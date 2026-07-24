@@ -11,3 +11,7 @@ ADD https://repo1.maven.org/maven2/org/postgresql/postgresql/42.7.4/postgresql-4
 RUN chmod 644 /opt/flink/lib/flink-sql-connector-kafka-3.3.0-1.20.jar \
                /opt/flink/lib/flink-connector-jdbc-3.2.0-1.19.jar \
                /opt/flink/lib/postgresql-42.7.4.jar
+
+# Checkpoint directory must exist in the image and be owned by the flink user, so
+# that a named volume mounted here inherits that ownership rather than root's.
+RUN mkdir -p /opt/flink/checkpoints && chown flink:flink /opt/flink/checkpoints
